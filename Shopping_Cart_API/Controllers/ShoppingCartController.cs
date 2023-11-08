@@ -145,6 +145,69 @@ namespace ShoppingCartAPI.Controllers
             return NotFound("Item not found in the cart");
         }
 
+        [HttpPut("update-inventory/{productId}")]
+        public IActionResult UpdateInventory(int productId, [FromBody] int newQuantity)
+        {
+            // Find the product in your inventory
+            var product = productService.GetAllProducts().FirstOrDefault(p => p.Id == productId);
+
+            if (product == null)
+            {
+                return NotFound("Product not found");
+            }
+
+            if (newQuantity < 0)
+            {
+                return BadRequest("Invalid inventory quantity");
+            }
+
+            // Update the inventory quantity
+            product.Quantity = newQuantity;
+
+            // If the product is in the cart, update the cart quantity
+            if (_cache.TryGetValue("shoppingCart", out List<CartItem> shoppingCart))
+            {
+                var cartItem = shoppingCart.FirstOrDefault(item => item.ProductId == productId);
+                if (cartItem != null)
+                {
+                    cartItem.Quantity = Math.Min(cartItem.Quantity, newQuantity);
+                }
+            }
+
+            return Ok("Inventory updated");
+        }
+
+        [HttpGet("inventory")]
+        public IActionResult GetInventoryWithUpdatedQuantities()
+        {
+            // If there's no cart data, return the original inventory
+            if (!_cache.TryGetValue("shoppingCart", out List<CartItem> shoppingCart))
+            {
+                return Ok(productService.GetAllProducts());
+            }
+
+            // Clone the original inventory to avoid modifying it
+            var updatedInventory = productService.GetAllProducts().Select(product => new Product
+            {
+                Id = product.Id,
+                Name = product.Name,
+                Price = product.Price,
+                Quantity = product.Quantity
+            }).ToList();
+
+            // Update the inventory quantities based on the items in the cart
+            foreach (var cartItem in shoppingCart)
+            {
+                var product = updatedInventory.FirstOrDefault(p => p.Id == cartItem.ProductId);
+                if (product != null)
+                {
+                    // Update the inventory quantity by subtracting the cart quantity
+                    product.Quantity -= cartItem.Quantity;
+                }
+            }
+
+            return Ok(updatedInventory);
+        }
 
 
 
